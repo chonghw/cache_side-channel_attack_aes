@@ -3,6 +3,9 @@
 rm -rf build
 
 # clean libraries
+#cd lib/openssl-0.9.8
+#./clean.sh
+
 cd lib/openssl-1.0.2
 ./clean.sh
 
@@ -15,8 +18,8 @@ cd ../one_round_attack
 cd ../last_round_attack
 ./clean.sh
 
-cd ../cryptocore
-./clean.sh
+#cd ../cryptocore
+#./clean.sh
 
 # clean attacks
 cd ../../

