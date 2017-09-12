@@ -10,11 +10,6 @@ side-channel-attack
 5. [How to run last-round-attack - rpi3 (armv8)](#5-how-to-run-last-round-attack---rpi3-armv8)
 6. [Supported attack for each arch](#6-supported-attack-for-each-arch)
 
-# License
-
-* © 2017 Jinbum Park
-* jinb.park@samsung.com
-
 # 1. How to build - armv7
 
 * Build all
@@ -119,5 +114,11 @@ side-channel-attack
 * one-round-attack is enable on both armv7 and armv8.
 * last-round-attack is enable on both armv7 and armv8.
 
+# License
+
+* © 2017 Jinbum Park
+* jinb.park@samsung.com
+* © 2017 Haehyun Cho
+* hcho67@asu.edu
 
 
